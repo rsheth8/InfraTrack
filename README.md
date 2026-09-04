@@ -1,5 +1,10 @@
 # InfraTrack
 
+<p align="center">
+  <img src="docs/brand/logo.png" width="168" alt="InfraTrack">
+</p>
+
+
 Internal-style AWS spend dashboard: cost by service, month-to-date vs budget, threshold alerts before finance finds out.
 
 | | |
@@ -248,3 +253,10 @@ cd backend && python -m scripts.seed               # re-seed against Postgres
 - **CORS is pre-configured** for local development, allowing the Vite dev
   server origins (`localhost:5173` and `localhost:3000`) to call the API
   directly.
+
+## Contributing
+
+PRs and issues welcome. How to run tests, env vars, and the expected layout: [CONTRIBUTING.md](CONTRIBUTING.md).
+
+Don't commit `.env`, API keys, or personal recordings.
+
