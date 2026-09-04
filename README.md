@@ -1,6 +1,13 @@
 # InfraTrack
 
-**A cloud-spend dashboard for engineering teams — track AWS costs per service, watch spend against a monthly budget, and get alerted before you blow it.**
+Internal-style AWS spend dashboard: cost by service, month-to-date vs budget, threshold alerts before finance finds out.
+
+| | |
+| --- | --- |
+| **Author** | [Rahil Sheth](https://github.com/rsheth8) |
+| **Repo** | [rsheth8/InfraTrack](https://github.com/rsheth8/InfraTrack) |
+| **Stack** | FastAPI, SQLAlchemy, SQLite/Postgres, React, Vite, recharts |
+| **Status** | Full-stack scaffold. Demo data is synthetic; Cost Explorer is a one-function swap, not wired yet. No auth (on purpose for local demo). |
 
 ---
 
