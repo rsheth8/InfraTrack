@@ -1,18 +1,23 @@
-# InfraTrack
-
 <p align="center">
-  <img src="docs/brand/logo.png" width="168" alt="InfraTrack">
+  <img src="docs/brand/logo.png" width="128" alt="InfraTrack">
 </p>
 
+<h1 align="center">InfraTrack</h1>
 
-Internal-style AWS spend dashboard: cost by service, month-to-date vs budget, threshold alerts before finance finds out.
+<p align="center">
+  See the AWS bill before finance does.
+</p>
 
-| | |
-| --- | --- |
-| **Author** | [Rahil Sheth](https://github.com/rsheth8) |
-| **Repo** | [rsheth8/InfraTrack](https://github.com/rsheth8/InfraTrack) |
-| **Stack** | FastAPI, SQLAlchemy, SQLite/Postgres, React, Vite, recharts |
-| **Status** | Full-stack scaffold. Demo data is synthetic; Cost Explorer is a one-function swap, not wired yet. No auth (on purpose for local demo). |
+<p align="center">
+  <a href="https://github.com/rsheth8/InfraTrack">Source</a>&nbsp;·&nbsp;<a href="CONTRIBUTING.md">Run locally</a>
+</p>
+
+<p align="center">
+  <img alt="FastAPI" src="https://img.shields.io/badge/FastAPI-009688?style=flat-square">
+  <img alt="React" src="https://img.shields.io/badge/React-Vite-61DAFB?style=flat-square&logo=react&logoColor=black">
+</p>
+
+<p align="center"><sub>Scaffold with synthetic demo data. Cost Explorer is a one-function swap. No auth — local only.</sub></p>
 
 ---
 
