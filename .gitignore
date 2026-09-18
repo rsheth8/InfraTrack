@@ -11,6 +11,7 @@ env/
 node_modules/
 dist/
 .vite/
+*.tsbuildinfo
 
 # SQLite (seed it locally)
 *.db
@@ -21,6 +22,9 @@ dist/
 .env
 .env.*
 !.env.example
+
+# Agent tooling scratch
+.claude-flow/
 
 # IDE / OS
 .DS_Store

@@ -1,0 +1,113 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Cancel superseded runs on the same branch instead of paying for both.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  backend:
+    name: backend (py${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Floor and ceiling of the supported range: the pins in
+        # requirements.txt claim 3.11-3.14, so both ends get exercised.
+        python: ["3.11", "3.14"]
+    defaults:
+      run:
+        working-directory: infratrack/backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+          cache-dependency-path: infratrack/backend/requirements*.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Lint
+        run: ruff check app scripts tests
+
+      - name: Check formatting
+        run: ruff format --check app scripts tests
+
+      - name: Test
+        run: pytest -q
+
+      - name: Smoke-test the offline jobs
+        run: |
+          python -m scripts.seed
+          python -m scripts.fetch_usage
+          python -m scripts.fetch_usage   # twice: the daily job must be idempotent
+          python -m scripts.send_alerts
+
+  backend-postgres:
+    name: backend (postgres 16)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infratrack/backend
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: infratrack
+          POSTGRES_USER: infratrack
+          POSTGRES_PASSWORD: infratrack
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      TEST_DATABASE_URL: postgresql+psycopg2://infratrack:infratrack@localhost:5432/infratrack
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: infratrack/backend/requirements*.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt -r requirements-dev.txt
+
+      # Runs the same suite against a real Postgres, plus the schema-parity
+      # tests that apply db/schema.sql and diff it against the ORM models.
+      - name: Test against Postgres
+        run: pytest -q
+
+  frontend:
+    name: frontend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infratrack/frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: infratrack/frontend/package-lock.json
+
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run build

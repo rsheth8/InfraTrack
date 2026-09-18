@@ -4,6 +4,7 @@ Defaults to a local SQLite file so the project runs with no external services.
 Set DATABASE_URL to a Postgres URL (the docker-compose file boots one) to use
 Postgres instead. SQLAlchemy 2.x ORM.
 """
+
 from __future__ import annotations
 
 import os

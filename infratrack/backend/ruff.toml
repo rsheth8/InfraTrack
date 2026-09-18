@@ -1,0 +1,14 @@
+# Explicit config so `ruff check` gives the same answer locally and in CI
+# regardless of any user- or parent-directory settings.
+line-length = 100
+target-version = "py311"
+
+[lint]
+select = ["E", "F", "I", "B", "UP"]
+# Depends()/Query() in argument defaults is the FastAPI idiom, not a bug.
+ignore = ["B008"]
+
+[lint.per-file-ignores]
+# Scripts intentionally adjust sys.path before importing the app package.
+"scripts/*" = ["E402"]
+"tests/conftest.py" = ["E402"]

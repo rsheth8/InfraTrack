@@ -1,10 +1,15 @@
 """Pydantic response/request schemas (API contract)."""
+
 from __future__ import annotations
 
 from datetime import date
-from typing import List
+from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
+
+# Accepted /usage windows. Anything else is rejected with a 422 by FastAPI
+# rather than silently falling back to a default window.
+Period = Literal["day", "week", "month", "quarter"]
 
 
 class TeamSummary(BaseModel):
@@ -20,16 +25,18 @@ class UsagePoint(BaseModel):
 
 class UsageResponse(BaseModel):
     team_id: int
-    period: str
+    period: Period
     total_usd: float
-    points: List[UsagePoint]
+    points: list[UsagePoint]
     by_service: dict[str, float]
 
 
 class AlertCreate(BaseModel):
-    team_id: int
-    threshold: float
-    email: str
+    team_id: int = Field(..., ge=1)
+    # Percent of budget. Over 100 is legitimate ("tell me at 150%"); zero or
+    # negative would fire on every evaluation forever.
+    threshold: float = Field(..., gt=0, le=1000)
+    email: EmailStr
 
 
 class AlertResponse(BaseModel):
@@ -39,8 +46,7 @@ class AlertResponse(BaseModel):
     email: str
     enabled: bool
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class BudgetResponse(BaseModel):

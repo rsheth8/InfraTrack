@@ -13,8 +13,10 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/rsheth8/InfraTrack/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/rsheth8/InfraTrack/actions/workflows/ci.yml/badge.svg"></a>
   <img alt="FastAPI" src="https://img.shields.io/badge/FastAPI-009688?style=flat-square">
   <img alt="React" src="https://img.shields.io/badge/React-Vite-61DAFB?style=flat-square&logo=react&logoColor=black">
+  <img alt="Tests" src="https://img.shields.io/badge/tests-39-brightgreen?style=flat-square">
 </p>
 
 <p align="center"><sub>Scaffold with synthetic demo data. Cost Explorer is a one-function swap. No auth — local only.</sub></p>
@@ -97,9 +99,9 @@ flowchart LR
     end
 
     subgraph Jobs["Scheduled / offline scripts"]
-        Seed[seed.py\nfabricates 90 days of demo data]
-        Fetch[fetch_usage.py\nwrites daily usage_snapshots]
-        Notify[send_alerts.py\nevaluates thresholds]
+        Seed["seed.py<br/>fabricates 90 days of demo data"]
+        Fetch["fetch_usage.py<br/>writes daily usage_snapshots"]
+        Notify["send_alerts.py<br/>evaluates thresholds"]
     end
 
     UI --> TeamSel
@@ -117,7 +119,7 @@ flowchart LR
     Alerts --> DB
 
     Seed --> DB
-    Fetch -->|synthetic model today,\nAWS Cost Explorer swap-in later| DB
+    Fetch -->|"synthetic model today,<br/>AWS Cost Explorer swap-in later"| DB
     DB --> Notify
     Notify -->|email, once wired up| Team_Owner[Team owner]
 ```
@@ -131,6 +133,8 @@ flowchart LR
 | Backend | FastAPI, SQLAlchemy 2.x (ORM), Pydantic v2, uvicorn |
 | Database | SQLite by default (zero setup); Postgres 16 opt-in via Docker |
 | Frontend | React 18, TypeScript, Vite, recharts |
+| Testing | pytest (39 tests, run against both SQLite and Postgres), ruff |
+| CI | GitHub Actions — lint, format, tests on Python 3.11 + 3.14, Postgres job, frontend build |
 | Dev/infra | python-dotenv, CORS middleware, Vite dev-server proxy, Docker Compose |
 
 ---
@@ -138,6 +142,7 @@ flowchart LR
 ## Project structure
 
 ```
+.github/workflows/ci.yml         # lint + tests (SQLite & Postgres) + frontend build
 infratrack/
 ├── backend/
 │   ├── app/
@@ -145,6 +150,7 @@ infratrack/
 │   │   ├── db.py                # SQLAlchemy engine — SQLite default, Postgres via DATABASE_URL
 │   │   ├── entities.py          # ORM models: Team, Budget, Alert, UsageSnapshot
 │   │   ├── models.py            # Pydantic request/response schemas (API contract)
+│   │   ├── spend.py             # month-to-date spend, derived from usage_snapshots
 │   │   └── routes/
 │   │       ├── teams.py         # GET /api/teams
 │   │       ├── usage.py         # GET /api/usage — period rollup + by-service totals
@@ -152,9 +158,11 @@ infratrack/
 │   │       └── alerts.py        # GET/POST/DELETE /api/alerts
 │   ├── scripts/
 │   │   ├── seed.py              # generates 90 days of synthetic usage, budgets, alerts
-│   │   ├── fetch_usage.py       # writes today's usage snapshots (cron target)
+│   │   ├── fetch_usage.py       # writes today's usage snapshots (cron target, idempotent)
 │   │   └── send_alerts.py       # evaluates alert thresholds against spend
-│   └── requirements.txt
+│   ├── tests/                   # pytest suite — endpoints, jobs, schema parity
+│   ├── requirements.txt         # runtime pins (verified on Python 3.11–3.14)
+│   └── requirements-dev.txt     # pytest + ruff
 ├── frontend/
 │   ├── index.html
 │   ├── vite.config.ts           # proxies /api/* to the backend on :8000
@@ -213,6 +221,29 @@ psql "$DATABASE_URL" -f db/schema.sql              # one-time schema creation
 cd backend && python -m scripts.seed               # re-seed against Postgres
 ```
 
+### 4. Tests
+
+```bash
+cd infratrack/backend
+pip install -r requirements.txt -r requirements-dev.txt
+pytest                      # 34 tests on SQLite; 5 Postgres-only tests skip
+
+ruff check app scripts tests
+ruff format --check app scripts tests
+```
+
+To run the same suite against a real Postgres — which also activates the
+schema-parity tests that apply `db/schema.sql` and diff it against the ORM:
+
+```bash
+docker compose up -d
+TEST_DATABASE_URL=postgresql+psycopg2://infratrack:infratrack@localhost:5432/infratrack pytest
+```
+
+CI runs all of it on every push: lint and format, the suite on Python 3.11 and
+3.14, the suite again against Postgres 16, a smoke test that runs the offline
+jobs end to end, and the frontend typecheck and build.
+
 ### API reference
 
 | Method | Path | Purpose |
@@ -229,35 +260,67 @@ cd backend && python -m scripts.seed               # re-seed against Postgres
 
 ## Notable implementation details
 
-- **SQLite-first, Postgres-compatible.** `app/db.py` defaults to a local
-  SQLite file with no configuration required. Setting the `DATABASE_URL`
-  environment variable to a Postgres connection string (matching the
-  `docker-compose.yml` service) switches the same SQLAlchemy models over to
-  Postgres with no code changes — `db/schema.sql` mirrors `entities.py` for
-  that case.
-- **Synthetic-but-plausible cost data.** `scripts/seed.py` generates costs
-  from a per-service daily mean, then layers in a per-team multiplier
-  (`Uniform(0.6, 1.8)`), weekend seasonality (0.78× on weekends), a mild
-  upward drift over the 90-day window, and Gaussian jitter — so the demo
-  data looks like a real, slightly noisy AWS bill rather than a flat line.
-  `fetch_usage.py` reuses the same model for ongoing (simulated) daily runs.
-- **Real AWS is a one-function swap.** To connect to actual billing data,
-  replace the sampling logic in `fetch_usage.py` with a `boto3` call to
+- **Spend is derived, never stored.** `budgets` used to carry a `spend_usd`
+  column written once at seed time. Nothing updated it afterwards, so the
+  moment the daily `fetch_usage` job took over, the dashboard under-reported
+  spend and — worse for an alerting tool — threshold alerts silently stopped
+  firing. Spend is now summed from `usage_snapshots` on read
+  (`app/spend.py`), so it cannot go stale. A cached total needs every writer
+  to remember to invalidate it; the one that forgets is a bug you only notice
+  from the finance email you built the tool to avoid. Regression tests in
+  `tests/test_budget.py` and `tests/test_jobs.py` cover both paths.
+- **The daily job is idempotent.** `fetch_usage.py` clears the current day's
+  rows before writing them, and a `UNIQUE (team_id, snapshot_date, service)`
+  constraint enforces one row per team/service/day at the database level. A
+  retried or double-scheduled cron run replaces the day instead of doubling
+  it. That constraint's `(team_id, snapshot_date)` prefix doubles as the index
+  every dashboard read needs for its date-range filter — one index, two jobs.
+- **Aggregation happens in SQL.** `/api/usage` groups and sums in the database
+  rather than loading every snapshot row and folding it in Python; the row
+  count grows with teams × services × days.
+- **Invalid input is rejected, not coerced.** `period` is a `Literal` type, so
+  an unrecognised window returns 422 instead of silently falling back to seven
+  days. Alert emails are validated as `EmailStr`, and thresholds must be
+  positive — a 0% threshold would fire on every evaluation forever.
+- **SQLite-first, Postgres-compatible — and proven.** `app/db.py` defaults to a
+  local SQLite file with no configuration required; `DATABASE_URL` switches the
+  same models to Postgres. Because SQLite is lenient about types and
+  constraints, CI runs the whole suite a second time against Postgres 16, plus
+  parity tests that apply `db/schema.sql` and diff the result against the ORM
+  models — so the hand-maintained DDL cannot quietly drift from `entities.py`.
+- **Synthetic-but-plausible cost data.** `scripts/seed.py` generates costs from
+  a per-service daily mean, then layers in a per-team multiplier
+  (`Uniform(0.6, 1.8)`), weekend seasonality (0.78× on weekends), a mild upward
+  drift over the 90-day window, and Gaussian jitter — so the demo data looks
+  like a real, slightly noisy AWS bill rather than a flat line. Seeded with a
+  fixed RNG, so the demo is reproducible.
+- **Real AWS is a one-function swap.** To connect actual billing data, replace
+  the sampling logic in `fetch_usage.py` with a `boto3` call to
   `get_cost_and_usage` from AWS Cost Explorer and map the results onto
-  `UsageSnapshot` rows — the API, database schema, and frontend need no
-  changes.
-- **Alerts are decoupled from the request path.** Creating an alert just
-  writes a row; nothing in the API sends email. `send_alerts.py` is intended
-  to run on a schedule (cron, Kubernetes CronJob, GitHub Actions, etc.),
-  independently evaluating each enabled alert's threshold against current
-  spend.
+  `UsageSnapshot` rows — the API, database schema, and frontend need no changes.
+- **Alerts are decoupled from the request path.** Creating an alert just writes
+  a row; nothing in the API sends email. `send_alerts.py` runs on a schedule
+  (cron, Kubernetes CronJob, GitHub Actions), independently evaluating each
+  enabled alert's threshold against current spend.
 - **No authentication.** The API and frontend are open by design — this is a
-  scaffold. Adding SSO or JWT-based auth in front of the FastAPI app is left
-  as an integration step for whoever deploys it, since the right choice
-  depends on the surrounding infrastructure.
+  scaffold. Adding SSO or JWT-based auth in front of the FastAPI app is left as
+  an integration step for whoever deploys it, since the right choice depends on
+  the surrounding infrastructure.
 - **CORS is pre-configured** for local development, allowing the Vite dev
-  server origins (`localhost:5173` and `localhost:3000`) to call the API
-  directly.
+  server origins (`localhost:5173` and `localhost:3000`) to call the API.
+
+## Known gaps
+
+Deliberate, not oversights:
+
+- **No auth**, as above — don't expose this on the public internet as-is.
+- **No frontend unit tests.** CI typechecks and builds the React app, which
+  catches breakage; component tests aren't worth a test-runner dependency for
+  four presentational components.
+- **No migrations.** Schema changes mean re-running `db/schema.sql`. Alembic is
+  the right answer the moment there's data worth preserving.
+- **`send_alerts.py` logs instead of emailing.** Wiring SES or a webhook is a
+  credentials problem, not a design one.
 
 ## Contributing
 

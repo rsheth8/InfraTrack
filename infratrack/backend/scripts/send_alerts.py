@@ -4,6 +4,7 @@ For each enabled `Alert`, compare the team's current-month spend to the
 threshold (percent of budget). In production, route triggered alerts to SES
 or a webhook; this version just logs them.
 """
+
 from __future__ import annotations
 
 import sys
@@ -14,6 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.db import SessionLocal  # noqa: E402
 from app.entities import Alert, Budget  # noqa: E402
+from app.spend import month_to_date_spend  # noqa: E402
 
 
 def main() -> None:
@@ -30,7 +32,8 @@ def main() -> None:
             if budget is None or float(budget.budget_usd) <= 0:
                 continue
 
-            percent = (float(budget.spend_usd) / float(budget.budget_usd)) * 100
+            spend = month_to_date_spend(db, alert.team_id, current_month)
+            percent = (spend / float(budget.budget_usd)) * 100
             if percent >= float(alert.threshold):
                 triggered += 1
                 print(

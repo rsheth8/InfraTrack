@@ -3,6 +3,7 @@ of daily usage snapshots across common AWS services.
 
 Run from the backend directory: `python -m scripts.seed`
 """
+
 from __future__ import annotations
 
 import random
@@ -15,6 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.db import Base, SessionLocal, engine  # noqa: E402
 from app.entities import Alert, Budget, Team, UsageSnapshot  # noqa: E402
+from app.spend import month_to_date_spend  # noqa: E402
 
 # Daily mean cost per service, modeled loosely on a small startup's AWS bill.
 SERVICE_DAILY_MEANS = {
@@ -72,23 +74,15 @@ def seed() -> None:
             # Flush pending snapshots before summing month-to-date spend
             db.flush()
 
+            # Size the budget off month-to-date spend so the demo dashboard
+            # lands somewhere interesting rather than at 0% or 900%.
             current_month = today.strftime("%Y-%m")
-            mtd = sum(
-                float(s.cost_usd)
-                for s in db.query(UsageSnapshot)
-                .filter(
-                    UsageSnapshot.team_id == team.id,
-                    UsageSnapshot.snapshot_date
-                    >= today.replace(day=1),
-                )
-                .all()
-            )
+            mtd = month_to_date_spend(db, team.id, current_month)
             db.add(
                 Budget(
                     team_id=team.id,
                     month=current_month,
                     budget_usd=round(mtd * rng.uniform(1.2, 2.0) + 500, 2),
-                    spend_usd=round(mtd, 2),
                 )
             )
 

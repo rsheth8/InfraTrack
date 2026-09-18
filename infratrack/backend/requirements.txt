@@ -1,6 +1,9 @@
-fastapi==0.115.4
-uvicorn[standard]==0.32.0
-pydantic==2.9.2
-SQLAlchemy==2.0.36
-psycopg2-binary==2.9.10
-python-dotenv==1.0.1
+# Runtime dependencies. Verified against Python 3.11-3.14.
+# The previous pins (pydantic 2.9.x) had no wheels for 3.13+ and failed to
+# build from source, so a fresh clone could not install on a current Python.
+fastapi==0.141.1
+uvicorn[standard]==0.53.0
+pydantic[email]==2.13.5
+SQLAlchemy==2.0.54
+psycopg2-binary==2.9.13
+python-dotenv==1.2.3

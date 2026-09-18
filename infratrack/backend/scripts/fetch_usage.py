@@ -7,6 +7,7 @@ moving on a cron.
 
 Schedule example (cron): ``5 0 * * *  python -m scripts.fetch_usage``
 """
+
 from __future__ import annotations
 
 import random
@@ -30,6 +31,12 @@ def main() -> None:
         if not teams:
             print("No teams configured. Run scripts/seed.py first.")
             return
+
+        # Idempotent: clear today's rows before rewriting them, so a retried or
+        # double-scheduled cron run replaces the day instead of doubling it.
+        db.query(UsageSnapshot).filter(UsageSnapshot.snapshot_date == today).delete(
+            synchronize_session=False
+        )
 
         for team in teams:
             multiplier = rng.uniform(0.6, 1.8)

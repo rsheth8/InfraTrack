@@ -8,7 +8,6 @@ CREATE TABLE IF NOT EXISTS budgets (
   team_id INTEGER NOT NULL REFERENCES teams(id),
   month TEXT NOT NULL,
   budget_usd NUMERIC(12, 2) NOT NULL,
-  spend_usd NUMERIC(12, 2) NOT NULL DEFAULT 0,
   created_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
@@ -29,3 +28,8 @@ CREATE TABLE IF NOT EXISTS usage_snapshots (
   snapshot_date DATE NOT NULL,
   created_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
+
+-- One row per team/service/day. Makes fetch_usage re-runs safe, and the
+-- (team_id, snapshot_date) prefix is the index dashboard reads need.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_usage_team_date_service
+  ON usage_snapshots (team_id, snapshot_date, service);
